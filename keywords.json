@@ -4,6 +4,21 @@
 
   "keywords": [
     {
+      "phrase": "best way to",
+      "score": 3,
+      "category": "implicit_intent"
+    },
+    {
+      "phrase": "how do you",
+      "score": 3,
+      "category": "implicit_intent"
+    },
+    {
+      "phrase": "any recommendations",
+      "score": 3,
+      "category": "implicit_intent"
+    },
+    {
       "phrase": "any better way",
       "score": 2,
       "category": "explicit_intent"

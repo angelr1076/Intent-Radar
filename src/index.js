@@ -4,15 +4,26 @@ import verticals from '../verticals.json' assert { type: 'json' };
 
 import fetchRedditRss from './redditRss.js';
 import normalize from './normalize.js';
-import scoreIntent from './keywordScore.js';
-import tagVertical from './tagVerticals.js';
-// import aiGate from './aiGate.js';
-// import upsert from './upsert.js';
+
+import scoreIntent from './leadSignals/detector/keywordScore.js';
+import tagVerticals from './leadSignals/detector/tagVerticals.js';
+import isSellerPost from './leadSignals/detector/isSellerPost.js';
+import isSellerIntent from './leadSignals/detector/isSellerIntent.js';
+
+import {
+  markAuthorSeen,
+  updateAuthorReputation,
+  shouldSkipAuthor,
+} from './leadSignals/detector/authorReputation.js';
+
+import { hasSeenUrl, markSeenUrl } from './leadSignals/detector/urlDedupe.js';
+import { AI_LIMITS } from './config/config.js';
 
 const isDryRun = process.argv.includes('--dry-run');
 
+let aiCallsThisRun = 0;
+
 if (!Array.isArray(feeds) || feeds.length === 0) {
-  console.warn('[WARN] No feeds found in feeds.intent.json');
   process.exit(0);
 }
 
@@ -23,6 +34,24 @@ for (const feed of feeds) {
   for (const raw of items) {
     const record = normalize(raw);
 
+    if (!record?.url) continue;
+
+    if (hasSeenUrl(record.url)) {
+      continue;
+    }
+    markSeenUrl(record.url);
+
+    if (isSellerPost(record) || isSellerIntent(record)) {
+      if (record.author) {
+        updateAuthorReputation(record.author, record.subreddit, 'seller');
+      }
+      continue;
+    }
+
+    if (record.author) {
+      markAuthorSeen(record.author, record.subreddit);
+    }
+
     console.log(
       `[DEBUG] sr:${record.subreddit} / checking post: ${record.title}`
     );
@@ -30,29 +59,44 @@ for (const feed of feeds) {
     const score = scoreIntent(record, keywords);
     if (!score.qualifies) continue;
 
-    console.log('[DEBUG] score result:', score);
+    const threshold = getConfidenceThreshold(record.subreddit);
+
+    if (score.confidence < threshold) {
+      console.log(
+        `[NEAR-MISS] sr:${record.subreddit} conf:${score.confidence} < ${threshold}`,
+        score.matchedPhrases
+      );
+      continue;
+    }
+
+    if (shouldSkipAuthor(record.author, record.subreddit)) {
+      continue;
+    }
 
     let ai = { qualified: true, reason: 'dry-run bypass' };
 
     if (!isDryRun) {
+      if (aiCallsThisRun >= AI_LIMITS.MAX_CALLS_PER_RUN) {
+        break;
+      }
+
       const { default: aiGate } = await import('./aiGate.js');
+      aiCallsThisRun += 1;
       ai = await aiGate(record);
+
       if (!ai.qualified) continue;
     }
 
-    const verticalsMatched = tagVertical(record, verticals);
+    updateAuthorReputation(record.author, record.subreddit, 'qualified');
 
-    verticals: verticalsMatched.map(v => ({
-      name: v.name,
-      confidence: v.confidence,
-    }));
+    const verticalsMatched = tagVerticals(record, verticals);
 
     const payload = {
       ...record,
       intentScore: score,
       aiQualified: true,
       aiReason: ai.reason,
-      verticalsMatched,
+      verticals: verticalsMatched,
     };
 
     if (isDryRun) {
@@ -62,7 +106,7 @@ for (const feed of feeds) {
         subreddit: payload.subreddit,
         author: payload.author,
         intentScore: payload.intentScore,
-        vertical: payload.vertical,
+        verticals: payload.verticals,
         aiReason: payload.aiReason,
         url: payload.url,
       });
@@ -73,5 +117,10 @@ for (const feed of feeds) {
   }
 }
 
-console.log('Done.');
+if (!isDryRun) {
+  console.log(
+    `[AI USAGE] ${aiCallsThisRun} AI calls used (cap: ${AI_LIMITS.MAX_CALLS_PER_RUN})`
+  );
+}
+
 process.exit(0);
