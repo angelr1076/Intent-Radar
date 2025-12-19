@@ -3,7 +3,6 @@
     "source": "Reddit: r/realestate",
     "type": "reddit",
     "subreddit": "realestate",
-    "sort": "new",
-    "url": "https://www.reddit.com/r/realestate/new/.rss"
+    "sort": "new"
   }
 ]
