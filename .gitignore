@@ -1,0 +1,22 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.local
+
+# OS junk
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Railway
+.railway/
+
+# Scratch / temp
+tmp/
+scratch/

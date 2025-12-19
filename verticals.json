@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "verticals": [
+    {
+      "name": "realestate",
+      "keywords": [
+        "real estate",
+        "realtor",
+        "listing",
+        "mls",
+        "broker",
+        "buyer",
+        "seller",
+        "open house"
+      ]
+    },
+    {
+      "name": "realestateagents",
+      "keywords": [
+        "real estate agent",
+        "agent",
+        "brokerage",
+        "leads",
+        "showings",
+        "crm"
+      ]
+    },
+    {
+      "name": "realestatemarketing",
+      "keywords": [
+        "marketing",
+        "facebook ads",
+        "google ads",
+        "zillow",
+        "lead gen",
+        "landing page"
+      ]
+    },
+    {
+      "name": "realestatetechnology",
+      "keywords": ["software", "app", "platform", "saas", "tool", "crm"]
+    }
+  ]
+}

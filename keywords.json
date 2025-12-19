@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "minimum_trigger_score": 2,
+  "keywords": [
+    {
+      "phrase": "need a tool",
+      "score": 1,
+      "category": "explicit_intent"
+    },
+    {
+      "phrase": "is there software",
+      "score": 1,
+      "category": "explicit_intent"
+    },
+    {
+      "phrase": "anyone using software",
+      "score": 1,
+      "category": "explicit_intent"
+    },
+    {
+      "phrase": "looking for software",
+      "score": 1,
+      "category": "explicit_intent"
+    },
+
+    {
+      "phrase": "spending too much time",
+      "score": 2,
+      "category": "pain"
+    },
+    {
+      "phrase": "manual process",
+      "score": 2,
+      "category": "pain"
+    },
+    {
+      "phrase": "doing this by hand",
+      "score": 2,
+      "category": "pain"
+    },
+    {
+      "phrase": "this is killing me",
+      "score": 2,
+      "category": "pain"
+    },
+
+    {
+      "phrase": "automate",
+      "score": 2,
+      "category": "automation"
+    },
+    {
+      "phrase": "automation",
+      "score": 2,
+      "category": "automation"
+    },
+    {
+      "phrase": "workflow",
+      "score": 3,
+      "category": "automation"
+    },
+
+    {
+      "phrase": "what do you use",
+      "score": 2,
+      "category": "comparison"
+    },
+    {
+      "phrase": "alternatives to",
+      "score": 2,
+      "category": "comparison"
+    }
+  ]
+}
