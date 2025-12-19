@@ -23,7 +23,10 @@ for (const feed of feeds) {
   for (const raw of items) {
     const record = normalize(raw);
 
-    console.log('[DEBUG] checking post:', record.title);
+    console.log(
+      `[DEBUG] sr:${record.subreddit} / checking post: ${record.title}`
+    );
+
     const score = scoreIntent(record, keywords);
     if (!score.qualifies) continue;
 
@@ -38,6 +41,11 @@ for (const feed of feeds) {
     }
 
     const verticalsMatched = tagVertical(record, verticals);
+
+    verticals: verticalsMatched.map(v => ({
+      name: v.name,
+      confidence: v.confidence,
+    }));
 
     const payload = {
       ...record,

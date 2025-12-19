@@ -5,17 +5,38 @@ export default function tagVerticals(record, verticalConfig) {
     return [];
   }
 
-  const matched = [];
+  const results = [];
 
   for (const vertical of verticalConfig.verticals) {
     const { name, keywords } = vertical;
+    if (!Array.isArray(keywords) || !name) continue;
 
-    if (!Array.isArray(keywords)) continue;
+    const matchedKeywords = keywords.filter(k =>
+      text.includes(k.toLowerCase())
+    );
 
-    if (keywords.some(k => text.includes(k.toLowerCase()))) {
-      matched.push(name);
-    }
+    if (matchedKeywords.length === 0) continue;
+
+    const confidence =
+      Math.round((matchedKeywords.length / keywords.length) * 100) / 100;
+
+    results.push({
+      name,
+      confidence,
+      matchedKeywords,
+    });
   }
 
-  return matched.length ? matched : ['unknown'];
+  if (results.length === 0) {
+    return [
+      {
+        name: 'unknown',
+        confidence: 0,
+        matchedKeywords: [],
+      },
+    ];
+  }
+
+  // Sort strongest signal first
+  return results.sort((a, b) => b.confidence - a.confidence);
 }
