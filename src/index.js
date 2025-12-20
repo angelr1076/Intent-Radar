@@ -46,14 +46,6 @@ if (!Array.isArray(feeds) || feeds.length === 0) {
 for (const feed of feeds) {
   console.log('[FEED START]', feed);
 
-  let feedStats = {
-    seen: 0,
-    deduped: 0,
-    sellers: 0,
-    qualified: 0,
-    written: 0,
-  };
-
   const items = await fetchRedditRss(feed);
   console.log('[FEED FETCHED]', {
     source: feed.source ?? null,
@@ -61,15 +53,9 @@ for (const feed of feeds) {
   });
 
   for (const raw of items) {
-    feedStats.seen += 1;
     debug('[RAW ITEM]', {
       title: raw?.title ?? null,
       url: raw?.url ?? raw?.link ?? null,
-    });
-
-    console.log('[FEED SUMMARY]', {
-      subreddit: feed.subreddit,
-      ...feedStats,
     });
 
     const record = normalize(raw);
@@ -86,17 +72,21 @@ for (const feed of feeds) {
       continue;
     }
 
-    if (!isDryRun) {
-      if (hasSeenUrl(record.url)) {
-        feedStats.deduped += 1;
+    if (!isDryRun && process.env.FORCE_SINGLE_WRITE !== '1') {
+      if (process.env.FORCE_SINGLE_WRITE !== '1' && hasSeenUrl(record.url)) {
         debug('[DEDUPED URL]', record.url);
         continue;
       }
-      markSeenUrl(record.url);
+
+      if (process.env.FORCE_SINGLE_WRITE !== '1') {
+        markSeenUrl(record.url);
+      }
     }
 
-    if (isSellerPost(record) || isSellerIntent(record)) {
-      feedStats.sellers += 1;
+    if (
+      isSellerPost(record) ||
+      (isSellerIntent(record) && process.env.FORCE_SINGLE_WRITE !== '1')
+    ) {
       console.log('[FILTERED SELLER]', record.title);
       if (record.author) {
         updateAuthorReputation(
@@ -112,9 +102,21 @@ for (const feed of feeds) {
     debug('[SCORING]', record.title);
 
     const score = scoreIntent(record, keywords);
+
+    if (process.env.FORCE_SINGLE_WRITE === '1') {
+      score.qualifies = true;
+      score.confidence = 1;
+    }
+
     const subredditKey = record.subreddit.toLowerCase();
-    const threshold =
+
+    const baseThreshold =
       CONFIDENCE_THRESHOLDS[subredditKey] ?? CONFIDENCE_THRESHOLDS.default;
+
+    const threshold =
+      process.env.LOWER_THRESH === '1'
+        ? Math.min(0.5, baseThreshold)
+        : baseThreshold;
     console.log('[SCORE RESULT]', {
       title: record.title,
       qualifies: score.qualifies,
@@ -155,14 +157,17 @@ for (const feed of feeds) {
       threshold,
     });
 
-    feedStats.qualified += 1;
-
     // AI GATE
-    let ai = { qualified: true, reason: 'dry-run bypass' };
+    let ai = { qualified: true, reason: 'force-write bypass' };
 
-    if (!isDryRun) {
-      if (!canUseAiToday(AI_LIMITS.MAX_CALLS_PER_DAY)) break;
-      if (aiCallsThisRun >= AI_LIMITS.MAX_CALLS_PER_RUN) break;
+    if (!isDryRun && process.env.FORCE_SINGLE_WRITE !== '1') {
+      if (!canUseAiToday(AI_LIMITS.MAX_CALLS_PER_DAY)) {
+        continue;
+      }
+
+      if (aiCallsThisRun >= AI_LIMITS.MAX_CALLS_PER_RUN) {
+        continue;
+      }
 
       const { default: aiGate } = await import('./aiGate.js');
 
@@ -182,10 +187,6 @@ for (const feed of feeds) {
         record.url
       );
     }
-    console.log('[QB PAYLOAD READY]', {
-      title: record.title,
-      url: record.url,
-    });
 
     const verticalsMatched = tagVerticals(record, verticals);
 
@@ -212,7 +213,6 @@ for (const feed of feeds) {
       console.log('[QB WRITE START]', payload.title);
       const { default: upsert } = await import('./upsert.js');
       await upsert(payload);
-      feedStats.written += 1;
       console.log('[QB WRITE SUCCESS]', payload.title);
     }
   }
