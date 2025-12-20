@@ -25,6 +25,8 @@ import {
   incrementDailyAiCount,
 } from './leadSignals/detector/aiUsage.js';
 
+const LOG_LEVEL = process.env.LOG_LEVEL ?? 'info';
+const debug = (...args) => LOG_LEVEL === 'debug' && console.log(...args);
 const isDryRun = process.argv.includes('--dry-run');
 let aiCallsThisRun = 0;
 
@@ -43,6 +45,15 @@ if (!Array.isArray(feeds) || feeds.length === 0) {
 
 for (const feed of feeds) {
   console.log('[FEED START]', feed);
+
+  let feedStats = {
+    seen: 0,
+    deduped: 0,
+    sellers: 0,
+    qualified: 0,
+    written: 0,
+  };
+
   const items = await fetchRedditRss(feed);
   console.log('[FEED FETCHED]', {
     source: feed.source ?? null,
@@ -50,14 +61,20 @@ for (const feed of feeds) {
   });
 
   for (const raw of items) {
-    console.log('[RAW ITEM]', {
+    feedStats.seen += 1;
+    debug('[RAW ITEM]', {
       title: raw?.title ?? null,
       url: raw?.url ?? raw?.link ?? null,
     });
 
+    console.log('[FEED SUMMARY]', {
+      subreddit: feed.subreddit,
+      ...feedStats,
+    });
+
     const record = normalize(raw);
 
-    console.log('[NORMALIZED]', {
+    debug('[NORMALIZED]', {
       title: record.title,
       subreddit: record.subreddit,
       author: record.author,
@@ -71,13 +88,15 @@ for (const feed of feeds) {
 
     if (!isDryRun) {
       if (hasSeenUrl(record.url)) {
-        console.log('[DEDUPED URL]', record.url);
+        feedStats.deduped += 1;
+        debug('[DEDUPED URL]', record.url);
         continue;
       }
       markSeenUrl(record.url);
     }
 
     if (isSellerPost(record) || isSellerIntent(record)) {
+      feedStats.sellers += 1;
       console.log('[FILTERED SELLER]', record.title);
       if (record.author) {
         updateAuthorReputation(
@@ -90,7 +109,7 @@ for (const feed of feeds) {
       continue;
     }
 
-    console.log('[SCORING]', record.title);
+    debug('[SCORING]', record.title);
 
     const score = scoreIntent(record, keywords);
     const subredditKey = record.subreddit.toLowerCase();
@@ -135,6 +154,8 @@ for (const feed of feeds) {
       confidence: score.confidence,
       threshold,
     });
+
+    feedStats.qualified += 1;
 
     // AI GATE
     let ai = { qualified: true, reason: 'dry-run bypass' };
@@ -191,6 +212,7 @@ for (const feed of feeds) {
       console.log('[QB WRITE START]', payload.title);
       const { default: upsert } = await import('./upsert.js');
       await upsert(payload);
+      feedStats.written += 1;
       console.log('[QB WRITE SUCCESS]', payload.title);
     }
   }
