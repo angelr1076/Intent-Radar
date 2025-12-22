@@ -8,7 +8,7 @@ Actual posts where someone is clearly stuck, frustrated, or looking for a better
 
 ## What this is
 
-Inbound Lead Signals is a signal-detection system. It watches selected public sources, evaluates posts using a set of rules, and surfaces only the ones that show **genuine intent** — the kind that usually precedes a buying decision. Every record is explainable and nothing is guesswork.
+Inbound Lead Signals is a signal-detection system. It watches selected public sources, evaluates posts using a set of rules, and surfaces only the ones that show **genuine intent**; The kind that usually precedes a buying decision. Every record is explainable and nothing is guesswork.
 
 ---
 
