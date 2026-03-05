@@ -58,5 +58,29 @@
     "type": "reddit",
     "subreddit": "RealEstatePhotography",
     "sort": "new"
+  },
+  {
+    "source": "Reddit: r/Plumbing",
+    "type": "reddit",
+    "subreddit": "Plumbing",
+    "sort": "new"
+  },
+  {
+    "source": "Reddit: r/HVAC",
+    "type": "reddit",
+    "subreddit": "HVAC",
+    "sort": "new"
+  },
+  {
+    "source": "Reddit: r/electricians",
+    "type": "reddit",
+    "subreddit": "electricians",
+    "sort": "new"
+  },
+  {
+    "source": "Reddit: r/Construction",
+    "type": "reddit",
+    "subreddit": "Construction",
+    "sort": "new"
   }
 ]

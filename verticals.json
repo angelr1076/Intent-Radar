@@ -70,6 +70,22 @@
         "photoshoot",
         "videography"
       ]
+    },
+    {
+      "name": "trades",
+      "keywords": [
+        "scheduling",
+        "dispatch",
+        "invoicing",
+        "estimating",
+        "quoting",
+        "fleet",
+        "field service",
+        "job management",
+        "work order",
+        "bidding",
+        "subcontractor"
+      ]
     }
   ]
 }

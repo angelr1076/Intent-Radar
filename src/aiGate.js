@@ -1,8 +1,17 @@
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'openai').toLowerCase();
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+
+const openaiClient = (LLM_PROVIDER === 'openai')
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+
+const anthropicClient = (LLM_PROVIDER === 'anthropic')
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  : null;
 
 function extractJson(text) {
   if (!text) return null;
@@ -48,16 +57,28 @@ export default async function aiGate(record) {
     record.text,
   ].join('\n');
 
-  const response = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: userMessage },
-    ],
-    temperature: 0,
-  });
+  let raw;
 
-  const raw = response.choices?.[0]?.message?.content;
+  if (LLM_PROVIDER === 'anthropic') {
+    const response = await anthropicClient.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 256,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+      temperature: 0,
+    });
+    raw = response.content?.[0]?.text;
+  } else {
+    const response = await openaiClient.chat.completions.create({
+      model: OPENAI_MODEL,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userMessage },
+      ],
+      temperature: 0,
+    });
+    raw = response.choices?.[0]?.message?.content;
+  }
   const parsed = extractJson(raw);
 
   if (!parsed || typeof parsed.qualified !== 'boolean') {

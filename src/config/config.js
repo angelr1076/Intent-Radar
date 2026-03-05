@@ -17,5 +17,9 @@ export const CONFIDENCE_THRESHOLDS = {
   realestatemarketing: 0.5,
   smallbusiness: 0.50,
   entrepreneurridealong: 0.50,
+  plumbing: 0.45,
+  hvac: 0.45,
+  electricians: 0.45,
+  construction: 0.45,
   default: 0.45,
 };
