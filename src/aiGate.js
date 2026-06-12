@@ -47,7 +47,20 @@ NOT QUALIFIED — the author is:
 - Already satisfied with their current solution (no unmet need)
 
 Return ONLY valid JSON with this exact shape:
-{"qualified": true/false, "reason": "one sentence explaining why"}`;
+{
+  "qualified": true/false,
+  "reason": "one sentence explaining why",
+  "usefulness": 0-100,
+  "signal_type": "pain_point" | "tool_request" | "incumbent_complaint" | "none",
+  "willingness_to_pay": "explicit" | "implied" | "none",
+  "persona": "short description of who the author is, e.g. 'solo HVAC contractor'"
+}
+
+Field guidance:
+- usefulness: how useful this post is for deciding what app to build — weigh willingness to pay, a named incumbent with a complaint, a manual workaround (spreadsheets, paper), urgency, and specificity. A vague question scores low even if qualified.
+- signal_type: the single best-fit label; "none" if not qualified.
+- willingness_to_pay: "explicit" only if they mention paying or a price; "implied" if they already pay for a tool they're unhappy with.
+- persona: best guess from the post and subreddit; empty string if unclear.`;
 
 export default async function aiGate(record) {
   const userMessage = [

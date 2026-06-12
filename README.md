@@ -19,7 +19,7 @@ src/
   index.js              — main pipeline orchestrator
   redditRss.js          — Reddit RSS fetcher
   normalize.js          — data normalization
-  aiGate.js             — OpenAI validation gate
+  aiGate.js             — LLM validation gate (OpenAI/Anthropic)
   qb.js                 — Quickbase API client
   upsert.js             — database write logic
   config/
@@ -28,17 +28,20 @@ src/
   leadSignals/
     detector/
       keywordScore.js   — 4-factor scoring algorithm
+      demandScore.js    — buildability/demand ranking (never qualifies)
       isSellerPost.js   — hard seller filter
       isSellerIntent.js — soft seller intent filter
       tagVerticals.js   — vertical categorization
       authorReputation.js — author behavior tracking
       urlDedupe.js      — URL deduplication (14-day TTL)
       aiUsage.js        — daily AI call tracking
+      themeTally.js     — monthly vertical + demand-category tally
     utils/
       getConfidenceThreshold.js
 data/                   — persisted local state
 feeds.intent.json       — feed source configuration
 keywords.json           — intent signal keywords (v2)
+demand-keywords.json    — demand ranking phrases (v1)
 verticals.json          — vertical taxonomy (v1)
 ```
 
@@ -55,7 +58,9 @@ verticals.json          — vertical taxonomy (v1)
 
 The system favors **precision over coverage**.
 
-### Filter chain (in order)
+### Filter chain (two phases)
+
+**Phase 1 — collect candidates** (per feed, no AI, no writes):
 
 1. **Fetch** — Reddit RSS (`/r/{subreddit}/new/.rss`)
 2. **Normalize** — combine title + body into unified text
@@ -65,9 +70,17 @@ The system favors **precision over coverage**.
 6. **Keyword Scoring** — evaluates text against 47 phrases across 6 categories; qualifies if best match score <= 3
 7. **Confidence Threshold** — subreddit-specific thresholds (0.40–0.50); near-misses logged but skipped
 8. **Author Reputation** — skip if sellerCount >= 3 AND qualifiedCount == 0
-9. **AI Gate** — GPT-4o-mini validation; rate-limited to 5/run, 10/day
-10. **Vertical Tagging** — categorize into 6 domains
-11. **Quickbase Upsert** — write qualified signal to database (merge on URL)
+9. **Demand Scoring** — buildability score (0–100) for ranking; never qualifies or disqualifies
+
+**Phase 2 — rank and gate** (across all feeds):
+
+10. **Rank** — sort candidates by demand score (confidence as tiebreak) so the AI budget is spent on the best posts of the run, not the first ones
+11. **AI Gate** — LLM validation; rate-limited to 5/run, 10/day
+12. **Vertical Tagging** — categorize into 6 domains
+13. **Quickbase Upsert** — write qualified signal to database (merge on URL)
+14. **Theme Tally** — increment monthly vertical + demand-category counts
+
+Seen-URLs are marked at final disposition (filtered, gated, or written). Candidates skipped only because the AI budget ran out stay unmarked and compete again next run.
 
 ---
 
@@ -94,6 +107,18 @@ Full breakdown of the confidence algorithm (frozen weights — v1.0).
 
 **Minimum trigger score**: 3 (post qualifies if any matched phrase has score <= 3)
 
+### Demand score (ranking only — v1.0)
+
+A second, independent score (0–100) answering "is this a buildable opportunity?" It never qualifies or disqualifies a post; it only orders the AI queue and lands in Quickbase as a sort column. Phrases live in `demand-keywords.json`.
+
+| Category | Weight | Example Phrases |
+|----------|--------|----------------|
+| Willingness to pay | 35 | "i'd pay", "willing to pay", "per month" |
+| Incumbent complaint | 20 | "too expensive", "bloated", "switching from" |
+| Current workaround | 20 | "spreadsheet", "pen and paper", "manually" |
+| Substance | 15 | word-count tiers (same as confidence) |
+| Urgency | 10 | "asap", "losing clients", "busy season" |
+
 ### Confidence thresholds (from config.js)
 
 | Subreddit | Threshold |
@@ -105,19 +130,22 @@ Full breakdown of the confidence algorithm (frozen weights — v1.0).
 | realestatemarketing | 0.50 |
 | smallbusiness, entrepreneurridealong | 0.50 |
 | plumbing, hvac, electricians, construction | 0.45 |
+| sweatystartup, propertymanagement, landscaping | 0.45 |
+| weddingphotography | 0.40 |
 | default | 0.45 |
 
 ---
 
 ## Feeds
 
-Currently monitors 14 subreddits:
+Currently monitors 18 subreddits:
 
 - r/smallbusiness, r/RealEstateTechnology
 - r/selfimprovement, r/GetDisciplined
 - r/writing, r/selfpublish, r/freelanceWriters
 - r/photography, r/AskPhotography, r/RealEstatePhotography
 - r/Plumbing, r/HVAC, r/electricians, r/Construction
+- r/sweatystartup, r/PropertyManagement, r/Landscaping, r/WeddingPhotography
 
 All configured in `feeds.intent.json`, using `new` sort via Reddit RSS.
 
@@ -136,8 +164,9 @@ AI is used as a secondary validation layer, not as a discovery mechanism.
 
 - **Model**: GPT-4o-mini, temperature 0
 - **Rate limits**: 5 calls/run, 10 calls/day (tracked in `data/ai-usage.json`)
+- **Budget allocation**: candidates are ranked by demand score first, so the capped calls always go to the most promising posts of the run
 - **Evaluates**: "Does the author express an unmet need for a tool or SaaS?"
-- **Output**: `{ qualified: boolean, reason: string }`
+- **Output**: `{ qualified, reason, usefulness (0–100), signal_type, willingness_to_pay, persona }` — one call, all fields
 
 **Qualified signals**: tool recommendations, pain points solvable by software, workflow frustration, comparing/searching for alternatives
 
@@ -149,7 +178,7 @@ AI is used as a secondary validation layer, not as a discovery mechanism.
 
 - **Database**: Quickbase (table `bvn3rebnv`)
 - **Upsert strategy**: merge on URL field
-- **Fields written**: URL, title, body, source, subreddit, author, intent score, AI qualified, AI reason, verticals, timestamp
+- **Fields written**: URL, title, body, source, subreddit, author, intent score, AI qualified, AI reason, verticals, timestamp, demand score, usefulness, signal type, willingness to pay, persona
 - **Auth**: `QB_REALM` + `QB_USER_TOKEN` env vars
 
 ---
@@ -161,6 +190,7 @@ The system maintains lightweight local state to improve signal quality over time
 - Seen URLs (deduplication)
 - Author reputation (seller vs qualified behavior)
 - Daily AI usage counters
+- Theme tally (monthly vertical + demand-category counts with sample URLs — recurring pains across authors signal a market)
 
 All state is file-backed and explainable.
 
@@ -231,6 +261,7 @@ npm run dry-run        # preview only, no DB writes, no AI calls
 
 - `dotenv` — environment variable loading
 - `openai` — OpenAI API client (GPT-4o-mini)
+- `@anthropic-ai/sdk` — Anthropic API client (optional provider)
 - `rss-parser` — RSS feed parsing
 
 ---

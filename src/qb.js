@@ -44,6 +44,11 @@ export default async function upsertLead(record) {
             : '',
         },
         16: { value: new Date().toISOString() },
+        20: { value: record.demandScore?.score ?? null },
+        21: { value: record.aiUsefulness ?? null },
+        22: { value: record.aiSignalType || '' },
+        23: { value: record.aiWillingnessToPay || '' },
+        24: { value: record.aiPersona || '' },
       },
     ],
   };

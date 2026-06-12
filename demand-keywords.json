@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "keywords": [
+    { "phrase": "i'd pay", "category": "wtp" },
+    { "phrase": "would pay", "category": "wtp" },
+    { "phrase": "willing to pay", "category": "wtp" },
+    { "phrase": "happy to pay", "category": "wtp" },
+    { "phrase": "per month", "category": "wtp" },
+    { "phrase": "worth paying", "category": "wtp" },
+
+    { "phrase": "too expensive", "category": "incumbent" },
+    { "phrase": "overpriced", "category": "incumbent" },
+    { "phrase": "bloated", "category": "incumbent" },
+    { "phrase": "switching from", "category": "incumbent" },
+    { "phrase": "fed up with", "category": "incumbent" },
+    { "phrase": "cancelled my", "category": "incumbent" },
+    { "phrase": "canceling my", "category": "incumbent" },
+    { "phrase": "price increase", "category": "incumbent" },
+
+    { "phrase": "spreadsheet", "category": "workaround" },
+    { "phrase": "excel", "category": "workaround" },
+    { "phrase": "google sheets", "category": "workaround" },
+    { "phrase": "pen and paper", "category": "workaround" },
+    { "phrase": "whiteboard", "category": "workaround" },
+    { "phrase": "manually", "category": "workaround" },
+    { "phrase": "by hand", "category": "workaround" },
+
+    { "phrase": "asap", "category": "urgency" },
+    { "phrase": "losing clients", "category": "urgency" },
+    { "phrase": "losing money", "category": "urgency" },
+    { "phrase": "falling behind", "category": "urgency" },
+    { "phrase": "busy season", "category": "urgency" }
+  ]
+}

@@ -21,5 +21,9 @@ export const CONFIDENCE_THRESHOLDS = {
   hvac: 0.45,
   electricians: 0.45,
   construction: 0.45,
+  sweatystartup: 0.45,
+  propertymanagement: 0.45,
+  landscaping: 0.45,
+  weddingphotography: 0.40,
   default: 0.45,
 };

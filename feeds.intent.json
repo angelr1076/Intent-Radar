@@ -82,5 +82,29 @@
     "type": "reddit",
     "subreddit": "Construction",
     "sort": "new"
+  },
+  {
+    "source": "Reddit: r/sweatystartup",
+    "type": "reddit",
+    "subreddit": "sweatystartup",
+    "sort": "new"
+  },
+  {
+    "source": "Reddit: r/PropertyManagement",
+    "type": "reddit",
+    "subreddit": "PropertyManagement",
+    "sort": "new"
+  },
+  {
+    "source": "Reddit: r/Landscaping",
+    "type": "reddit",
+    "subreddit": "Landscaping",
+    "sort": "new"
+  },
+  {
+    "source": "Reddit: r/WeddingPhotography",
+    "type": "reddit",
+    "subreddit": "WeddingPhotography",
+    "sort": "new"
   }
 ]

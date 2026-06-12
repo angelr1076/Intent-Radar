@@ -2,11 +2,13 @@ import 'dotenv/config';
 import feeds from '../feeds.intent.json' with { type: 'json' };
 import keywords from '../keywords.json' with { type: 'json' };
 import verticals from '../verticals.json' with { type: 'json' };
+import demandKeywords from '../demand-keywords.json' with { type: 'json' };
 
 import fetchRedditRss from './redditRss.js';
 import normalize from './normalize.js';
 
 import scoreIntent from './leadSignals/detector/keywordScore.js';
+import scoreDemand from './leadSignals/detector/demandScore.js';
 import tagVerticals from './leadSignals/detector/tagVerticals.js';
 import isSellerPost from './leadSignals/detector/isSellerPost.js';
 import isSellerIntent from './leadSignals/detector/isSellerIntent.js';
@@ -17,6 +19,7 @@ import {
 } from './leadSignals/detector/authorReputation.js';
 
 import { hasSeenUrl, markSeenUrl } from './leadSignals/detector/urlDedupe.js';
+import { recordTheme } from './leadSignals/detector/themeTally.js';
 import { AI_LIMITS, CONFIDENCE_THRESHOLDS } from './config/config.js';
 
 import {
@@ -30,6 +33,11 @@ const debug = (...args) => LOG_LEVEL === 'debug' && console.log(...args);
 const isDryRun = process.argv.includes('--dry-run');
 let aiCallsThisRun = 0;
 
+// Seen-URLs are marked at final disposition only (filtered, gated, or written).
+// Candidates skipped purely because the AI budget ran out stay unmarked so they
+// compete again next run.
+const shouldTrackSeen = !isDryRun && process.env.FORCE_SINGLE_WRITE !== '1';
+
 if (!process.env.QB_REALM || !process.env.QB_USER_TOKEN) {
   throw new Error('Quickbase environment variables are missing');
 }
@@ -42,6 +50,9 @@ console.log('[BOOT]', {
 if (!Array.isArray(feeds) || feeds.length === 0) {
   process.exit(0);
 }
+
+// PHASE 1 — fetch + filter, collect qualifying candidates (no AI, no writes)
+const candidates = [];
 
 for (const feed of feeds) {
   try {
@@ -73,15 +84,9 @@ for (const feed of feeds) {
         continue;
       }
 
-      if (!isDryRun && process.env.FORCE_SINGLE_WRITE !== '1') {
-        if (process.env.FORCE_SINGLE_WRITE !== '1' && hasSeenUrl(record.url)) {
-          debug('[DEDUPED URL]', record.url);
-          continue;
-        }
-
-        if (process.env.FORCE_SINGLE_WRITE !== '1') {
-          markSeenUrl(record.url);
-        }
+      if (shouldTrackSeen && hasSeenUrl(record.url)) {
+        debug('[DEDUPED URL]', record.url);
+        continue;
       }
 
       if (
@@ -89,6 +94,7 @@ for (const feed of feeds) {
         (isSellerIntent(record) && process.env.FORCE_SINGLE_WRITE !== '1')
       ) {
         console.log('[FILTERED SELLER]', record.title);
+        if (shouldTrackSeen) markSeenUrl(record.url);
         if (record.author) {
           updateAuthorReputation(
             record.author,
@@ -124,7 +130,10 @@ for (const feed of feeds) {
         confidence: score.confidence,
         phrases: score.matchedPhrases,
       });
-      if (!score.qualifies) continue;
+      if (!score.qualifies) {
+        if (shouldTrackSeen) markSeenUrl(record.url);
+        continue;
+      }
 
       console.log('[THRESHOLD]', {
         subreddit: record.subreddit,
@@ -141,6 +150,7 @@ for (const feed of feeds) {
           categories: score.categories,
           url: record.url,
         });
+        if (shouldTrackSeen) markSeenUrl(record.url);
         continue;
       }
 
@@ -149,76 +159,120 @@ for (const feed of feeds) {
         shouldSkipAuthor(record.author, record.subreddit, record.url)
       ) {
         console.log('[SKIP AUTHOR]', record.author);
+        if (shouldTrackSeen) markSeenUrl(record.url);
         continue;
       }
 
-      console.log('[PRE-AI]', {
+      const demand = scoreDemand(record, demandKeywords);
+
+      console.log('[CANDIDATE]', {
         title: record.title,
         confidence: score.confidence,
-        threshold,
+        demandScore: demand.score,
+        demandCategories: demand.categories,
       });
 
-      // AI GATE
-      let ai = { qualified: true, reason: 'force-write bypass' };
-
-      if (!isDryRun && process.env.FORCE_SINGLE_WRITE !== '1') {
-        if (!canUseAiToday(AI_LIMITS.MAX_CALLS_PER_DAY)) {
-          continue;
-        }
-
-        if (aiCallsThisRun >= AI_LIMITS.MAX_CALLS_PER_RUN) {
-          continue;
-        }
-
-        const { default: aiGate } = await import('./aiGate.js');
-
-        aiCallsThisRun += 1;
-        incrementDailyAiCount(1);
-
-        ai = await aiGate(record);
-        if (!ai.qualified) continue;
-      }
-      // END AI GATE
-
-      if (record.author) {
-        updateAuthorReputation(
-          record.author,
-          record.subreddit,
-          'qualified',
-          record.url
-        );
-      }
-
-      const verticalsMatched = tagVerticals(record, verticals);
-
-      const payload = {
-        ...record,
-        intentScore: score,
-        aiQualified: true,
-        aiReason: ai.reason,
-        verticals: verticalsMatched,
-      };
-
-      if (isDryRun) {
-        console.log('--- INBOUND LEAD SIGNAL ---');
-        console.log({
-          title: payload.title,
-          subreddit: payload.subreddit,
-          author: payload.author,
-          confidence: score.confidence,
-          phrases: score.matchedPhrases,
-          verticals: payload.verticals,
-          url: payload.url,
-        });
-      } else {
-        console.log('[QB WRITE START]', payload.title);
-        const { default: upsert } = await import('./upsert.js');
-        await upsert(payload);
-        console.log('[QB WRITE SUCCESS]', payload.title);
-      }
+      candidates.push({ record, score, demand, threshold });
     }
   } catch (error) {
     console.error(`[FEED ERROR] Failed to process feed: ${JSON.stringify(feed)}`, error);
+  }
+}
+
+// PHASE 2 — rank candidates, spend the AI budget on the best ones first
+candidates.sort(
+  (a, b) =>
+    b.demand.score - a.demand.score ||
+    b.score.confidence - a.score.confidence
+);
+
+console.log('[RANKED]', candidates.map(({ record, score, demand }) => ({
+  title: record.title,
+  demandScore: demand.score,
+  confidence: score.confidence,
+})));
+
+for (const { record, score, demand, threshold } of candidates) {
+  try {
+    console.log('[PRE-AI]', {
+      title: record.title,
+      confidence: score.confidence,
+      demandScore: demand.score,
+      threshold,
+    });
+
+    // AI GATE
+    let ai = { qualified: true, reason: 'force-write bypass' };
+
+    if (!isDryRun && process.env.FORCE_SINGLE_WRITE !== '1') {
+      if (!canUseAiToday(AI_LIMITS.MAX_CALLS_PER_DAY)) {
+        console.log('[AI BUDGET] daily cap reached — remaining candidates left unseen for next run');
+        break;
+      }
+
+      if (aiCallsThisRun >= AI_LIMITS.MAX_CALLS_PER_RUN) {
+        console.log('[AI BUDGET] run cap reached — remaining candidates left unseen for next run');
+        break;
+      }
+
+      markSeenUrl(record.url);
+
+      const { default: aiGate } = await import('./aiGate.js');
+
+      aiCallsThisRun += 1;
+      incrementDailyAiCount(1);
+
+      ai = await aiGate(record);
+      if (!ai.qualified) continue;
+    }
+    // END AI GATE
+
+    if (record.author) {
+      updateAuthorReputation(
+        record.author,
+        record.subreddit,
+        'qualified',
+        record.url
+      );
+    }
+
+    const verticalsMatched = tagVerticals(record, verticals);
+
+    const payload = {
+      ...record,
+      intentScore: score,
+      demandScore: demand,
+      aiQualified: true,
+      aiReason: ai.reason,
+      aiUsefulness: ai.usefulness ?? null,
+      aiSignalType: ai.signal_type ?? '',
+      aiWillingnessToPay: ai.willingness_to_pay ?? '',
+      aiPersona: ai.persona ?? '',
+      verticals: verticalsMatched,
+    };
+
+    if (isDryRun) {
+      console.log('--- INBOUND LEAD SIGNAL ---');
+      console.log({
+        title: payload.title,
+        subreddit: payload.subreddit,
+        author: payload.author,
+        confidence: score.confidence,
+        demandScore: demand.score,
+        demandCategories: demand.categories,
+        phrases: score.matchedPhrases,
+        verticals: payload.verticals,
+        url: payload.url,
+      });
+    } else {
+      console.log('[QB WRITE START]', payload.title);
+      const { default: upsert } = await import('./upsert.js');
+      await upsert(payload);
+      console.log('[QB WRITE SUCCESS]', payload.title);
+      recordTheme(payload);
+    }
+  } catch (error) {
+    console.error(`[CANDIDATE ERROR] ${record.url}`, error);
   }
 }
 
