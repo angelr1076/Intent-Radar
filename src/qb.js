@@ -40,7 +40,7 @@ export default async function upsertLead(record) {
         14: { value: record.aiReason || '' },
         15: {
           value: Array.isArray(record.verticals)
-            ? record.verticals.join(', ')
+            ? record.verticals.map((v) => v.name).join(', ')
             : '',
         },
         16: { value: new Date().toISOString() },
